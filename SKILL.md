@@ -1,283 +1,354 @@
 ---
 name: repo-to-interview
-description: Analyze a software repository, extract evidence-backed technical contributions, and package them for resumes and technical interviews without inventing ownership or exposing confidential information.
+description: Analyze Python and TypeScript repositories with ASTs, build import/call graphs, trace Agent execution paths, rank interview-value source files, and generate a sanitized project_profile.md for technical interviews.
 ---
 
 # Repo to Interview
 
 ## Purpose
 
-Turn a software repository into an evidence-backed project profile for technical recruiting. Inspect the repository first, identify technically meaningful components, verify what the user actually contributed, and only then produce role-oriented resume and interview material.
+Turn a real team repository into a technically defensible project profile for resumes and interviews. The default assumption is that the user participated in development of the repository and is allowed to describe the project at an appropriate level. Do not attempt to infer per-file or per-function authorship unless the user explicitly asks.
 
-This skill is especially useful for internships and team projects where the repository contains substantially more work than the user personally implemented.
+The primary job is to discover **what is technically important, how the system actually works, where the evidence lives, and what the user should study before an interview**.
 
 ## Core principles
 
-1. **Repository evidence before narrative.** Inspect code, configuration, tests, docs, commit history, and architecture before writing project claims.
-2. **Project capability is not personal ownership.** Never convert a team capability into a first-person claim without evidence or user confirmation.
-3. **Technical depth over generic wording.** Prefer mechanisms, tradeoffs, interfaces, data flow, evaluation, observability, and measurable outcomes.
-4. **Confidentiality by default.** Portable outputs must exclude proprietary names, credentials, customer data, internal endpoints, private infrastructure details, source code, and other restricted information.
-5. **Interview defensibility.** A claim is useful only if the user can explain how it works, why it was designed that way, and where the relevant implementation lives.
+1. **Code evidence before narrative.** Inspect implementation and execution paths before producing career material.
+2. **Team-project framing by default.** Treat discovered modules as parts of a project the user participated in; do not make unsupported claims of sole authorship or leadership.
+3. **AST and graph analysis before keyword-only conclusions.** Keywords are seeds, not proof of architecture.
+4. **Interview value over repository coverage.** Find the small set of files and mechanisms most likely to support strong technical discussion.
+5. **Confidentiality by default.** Portable outputs must remove proprietary identifiers, credentials, internal endpoints, customer data, source code, and restricted infrastructure details.
+6. **Defensibility.** Strong material should answer What / How / Why / Failure.
 
-## Inputs
+## Default pipeline
 
-Use as many of the following as are available:
-
-- current repository or repository URL;
-- target role, e.g. Agent Engineer, LLM Application Engineer, AI Full-stack Engineer, Backend Engineer, ML Engineer;
-- user's rough description of responsibilities;
-- commit / PR identity when available;
-- job description when available;
-- existing resume bullets when available.
-
-Do not require all inputs before beginning repository reconnaissance.
-
-## Workflow
-
-### Phase 1: Repository reconnaissance
-
-Inspect the repository before asking the user to summarize it.
-
-Start with high-signal sources:
-
-- README and architecture docs;
-- top-level directory structure;
-- dependency manifests;
-- application entry points;
-- API / router / service layers;
-- database schemas and migrations;
-- configuration files;
-- tests;
-- Docker / deployment files;
-- CI workflows;
-- commit history and PR history if available.
-
-Then identify major execution paths and produce a repository map.
-
-For local repositories, prefer fast native inspection tools such as:
+For a local repository, run the automated pipeline first when Python or TypeScript/TSX code is present:
 
 ```bash
-find . -maxdepth 3 -type f | sort
-rg -n "agent|tool|function.?call|prompt|planner|memory|context|session|conversation|workflow|judge|eval|trace|span|opentelemetry|retry|fallback|router|token|latency|cost" .
+python scripts/analyze_repo.py <repo-root>
+python scripts/generate_project_profile.py <repo-root>
 ```
 
-Do not dump entire large files when targeted reads are sufficient.
+This produces:
 
-Record:
+```text
+<repo-root>/.repo_to_interview/
+├── analysis.json
+└── project_profile.md
+```
 
-- subsystem / module;
-- purpose;
+The scripts are evidence collectors and first-pass generators. The Agent must still read high-value source locations and refine conclusions from actual code.
+
+## Phase 1: Repository inventory
+
+Inspect:
+
+- README / architecture docs;
+- dependency manifests;
 - entry points;
-- important classes / functions;
-- upstream / downstream dependencies;
-- relevant files;
-- confidence level.
+- routers / controllers / services;
+- Agent and LLM modules;
+- persistence and session/state models;
+- evaluation / tracing / observability;
+- tests and deployment files.
 
-### Phase 2: Architecture reconstruction
+Use `scripts/repo_inventory.py` for a quick inventory when useful.
 
-Reconstruct the project at three levels:
+Exclude generated/vendor/build directories such as `.git`, `node_modules`, `dist`, `build`, `.next`, `venv`, `.venv`, caches, generated code, and minified bundles.
 
-1. **System level** — services, UI, persistence, external dependencies, model providers, queues, observability.
-2. **Workflow level** — request lifecycle, agent loop, tool execution, state transitions, evaluation loop, retry / fallback behavior.
-3. **Implementation level** — key files, classes, functions, schemas, prompts, metrics, tests.
+## Phase 2: Python / TypeScript AST analysis
 
-When possible, trace at least one representative end-to-end path from input to output.
+Use `scripts/analyze_repo.py`.
 
-### Phase 3: Technical feature mining
+### Python
 
-Search for role-relevant mechanisms, not just keywords.
+Parse `.py` with Python's standard-library `ast` and collect:
 
-For Agent / LLM application roles, inspect for:
+- module imports and from-imports;
+- functions, async functions, classes and methods;
+- decorators;
+- line ranges;
+- function/method call expressions;
+- framework/architecture markers;
+- Agent/LLM/evaluation/observability markers.
 
-- agent orchestration;
-- tool / function calling;
-- tool registry and schemas;
-- planning and control flow;
+Do not fail the whole run because one file has a syntax error. Record parse errors and continue.
+
+### TypeScript / TSX
+
+Use `scripts/ts_ast_analyzer.cjs`, backed by the TypeScript Compiler API, for `.ts` / `.tsx` files. Resolve `typescript` from the target repository first, then from the Skill installation.
+
+Collect:
+
+- imports and exports;
+- functions, methods, classes, arrow functions assigned to variables;
+- call expressions;
+- decorators where available;
+- source line ranges;
+- relevant identifiers and string markers.
+
+If TypeScript cannot be resolved, continue Python analysis, mark TS analysis as unavailable, and tell the user how to enable it. Do not silently replace AST analysis with regex and call it equivalent.
+
+## Phase 3: Import graph and call graph
+
+Build two graphs from AST facts.
+
+### Import graph
+
+Nodes are source files. Edges represent internal imports.
+
+Resolve conservatively:
+
+- Python package/module paths against repository files and `__init__.py`;
+- TypeScript relative imports against `.ts`, `.tsx`, `/index.ts`, `/index.tsx`;
+- aliases only when they can be derived safely from common config or obvious local paths.
+
+Unresolved external imports should remain metadata, not graph edges.
+
+For each file calculate:
+
+- incoming internal imports;
+- outgoing internal imports;
+- whether it is an entry point;
+- whether it is a hub/bridge in the local architecture.
+
+### Call graph
+
+Nodes are functions/methods when resolvable; edges are calls.
+
+Resolve with confidence levels:
+
+- `high`: same-file named function/method or unambiguous imported symbol;
+- `medium`: qualified call that maps plausibly to a known symbol;
+- `low`: textual/heuristic match only.
+
+Never present a low-confidence call edge as certain runtime behavior. Dynamic dispatch, dependency injection, decorators, reflection, event buses, framework routing, and tool registries can make static graphs incomplete.
+
+## Phase 4: Agent execution-chain tracing
+
+Automatically discover representative Agent/LLM execution chains from graph evidence.
+
+### Seed detection
+
+Prioritize source locations containing or calling mechanisms such as:
+
+- agent / planner / executor / orchestrator;
+- tool / function calling / tool registry;
 - prompt construction;
-- context / session management;
-- memory and persistence;
+- chat/completion/model invocation;
+- context / memory / session / conversation state;
 - structured output;
-- multi-agent coordination;
-- retries and fallbacks;
-- model routing;
-- evaluation / LLM-as-a-Judge;
-- benchmark metrics such as pass@k / success@k;
-- tracing / spans / OpenTelemetry;
-- latency and token accounting;
-- cost controls;
-- caching;
-- streaming;
-- guardrails;
-- failure analysis.
+- judge / evaluator / benchmark;
+- trace / span / OpenTelemetry;
+- retry / fallback / routing;
+- streaming / token / latency / cost.
 
-For each candidate feature, explain the actual mechanism from code evidence. Do not infer architecture solely from a filename or keyword hit.
+Also detect common framework signals without assuming a particular framework.
 
-### Phase 4: Contribution verification
+### Trace procedure
 
-Create a candidate contribution table. Every claim must receive one ownership label:
+1. Find likely external-facing entry points: API handlers, CLI commands, workers, UI actions, scheduled jobs, test harnesses.
+2. Find high-signal Agent/LLM nodes.
+3. Traverse the call graph from entry points toward high-signal nodes and downstream tool/evaluation/persistence nodes.
+4. Prefer chains containing distinct architectural stages rather than repeated helper calls.
+5. Record confidence and unresolved jumps.
+6. Produce up to several representative chains, normally 3-8, rather than every possible path.
 
-- `OWNED` — user independently implemented or designed the substantial part.
-- `MAJOR_CONTRIBUTOR` — user implemented or designed a large part with team collaboration.
-- `CONTRIBUTED` — user made a meaningful but bounded contribution.
-- `UNDERSTAND_ONLY` — user can explain the component but did not materially implement it.
-- `UNKNOWN` — evidence is insufficient.
-- `DO_NOT_CLAIM` — attribution would be misleading or confidentiality risk is too high.
+Represent a chain like:
 
-Accept ownership evidence from:
+```text
+request handler
+→ conversation service
+→ diagnosis agent
+→ tool selector / registry
+→ tool execution
+→ model decision
+→ state persistence
+→ evaluator / tracing
+```
 
-1. explicit user confirmation tied to a concrete module or task;
-2. commits / PRs attributable to the user;
-3. issue / task records linking the user and component;
-4. other direct evidence supplied by the user.
+The chain must be grounded in files/functions. If static analysis cannot bridge two stages, mark the jump as `[dynamic/unresolved]`.
 
-Repository presence alone is never ownership evidence.
+## Phase 5: Interview-value scoring
 
-For `UNKNOWN` items, ask the user compact verification questions with concrete choices. Prefer batching related items instead of asking one question at a time.
+Compute an explainable score from 0-100 for source files. The score is a prioritization heuristic, not a quality metric.
 
-### Phase 5: Claim gate
+Default components:
 
-Before generating first-person resume or interview claims, verify all of the following:
+- **Agent/LLM relevance (0-30):** Agent orchestration, tool calling, prompts, evaluation, context/state, model calls.
+- **Execution-path importance (0-25):** participation in representative chains and proximity to important entry points.
+- **Graph centrality (0-20):** meaningful internal import/call connectivity, with caps to avoid rewarding utility dumping grounds.
+- **Architecture signal (0-15):** routers, services, registries, schemas, persistence boundaries, tracing, retries, streaming, deployment control.
+- **Implementation depth (0-10):** substantive functions/classes and non-trivial control flow; avoid rewarding generated or huge files merely for size.
 
-- ownership label is `OWNED`, `MAJOR_CONTRIBUTOR`, or `CONTRIBUTED`;
-- code or user evidence exists;
-- the user can plausibly defend the mechanism in a technical interview;
-- wording does not overstate scope;
-- confidential details can be safely generalized.
+Apply penalties for:
 
-If any condition fails, downgrade wording to project-level framing such as:
+- generated/vendor code;
+- tests/fixtures when they do not explain core mechanisms;
+- config-only files with little interview depth;
+- parse failures or low-confidence-only evidence.
 
-- "the system uses ...";
-- "the team implemented ...";
-- "I contributed to ...".
+For every ranked file expose the score breakdown and a short reason.
 
-Never use "I designed", "I built", "I implemented", or equivalent wording for `UNDERSTAND_ONLY`, `UNKNOWN`, or `DO_NOT_CLAIM` items.
+Use score bands:
 
-### Phase 6: Evidence map
+- `85-100`: must review;
+- `70-84`: high priority;
+- `50-69`: useful supporting context;
+- `<50`: usually background unless it supports a specific claim.
 
-Build an evidence map with at least these fields:
+The Agent should inspect the top-ranked files manually before final packaging.
+
+## Phase 6: Architecture reconstruction
+
+Using AST facts, graphs, execution chains, configs, docs, and targeted source reads, reconstruct:
+
+1. **System level** — UI/services/persistence/model providers/queues/observability.
+2. **Workflow level** — request lifecycle, Agent loop, tool execution, state, evaluation, retry/fallback.
+3. **Implementation level** — important files, functions, schemas, prompts, metrics and tests.
+
+Do not infer architecture solely from filenames.
+
+## Phase 7: Technical feature mining
+
+For each strong mechanism record:
 
 | Field | Meaning |
 |---|---|
-| Candidate claim | Technical contribution that may be useful |
-| Ownership | Ownership label |
-| Evidence | Files, functions, commits, PRs, or user confirmation |
-| Mechanism | What the implementation actually does |
-| Interview value | High / Medium / Low |
-| Interview risk | High / Medium / Low |
-| Confidentiality risk | High / Medium / Low |
-| Recommended usage | Resume / interview / background only / do not use |
+| Feature | Technical mechanism |
+| Mechanism | How it works |
+| Evidence | Files/functions/graph path |
+| Interview value | High/Medium/Low |
+| Confidence | High/Medium/Low |
+| Role relevance | Agent / LLM app / full-stack / backend |
 
-Prefer fewer high-quality claims over many shallow claims.
+Important areas include orchestration, tool calling, prompt/context design, state, multi-Agent coordination, evaluation, tracing, retry/fallback, routing, latency/cost, caching, streaming, structured output and guardrails.
 
-### Phase 7: Role-oriented packaging
+## Phase 8: Role-oriented packaging
 
-Adapt the same verified project evidence to the target role.
+### Agent Engineer
 
-#### Agent Engineer
+Prioritize orchestration, tool calling, execution control, state, evaluation, tracing, reliability, context design, routing and failure handling.
 
-Prioritize orchestration, tool calling, agent state, workflows, evaluation, tracing, reliability, prompt/context design, and model routing.
+### LLM Application Engineer
 
-#### LLM Application Engineer
+Prioritize prompt/context construction, model integration, structured outputs, evaluation, behavior analysis, guardrails, latency/cost and observability.
 
-Prioritize prompt design, structured outputs, evaluation, RAG/context integration if present, model behavior analysis, guardrails, latency/cost tradeoffs, and observability.
+### AI Full-stack Engineer
 
-#### AI Full-stack Engineer
+Prioritize Agent/LLM integration with APIs, frontend interaction, session persistence, streaming, schema contracts, deployment and debugging.
 
-Prioritize LLM/Agent integration, API design, session persistence, frontend interaction, streaming, schema contracts, deployment, and debugging.
+### Backend Engineer
 
-#### Backend Engineer
+Prioritize API/service boundaries, data models, async execution, retries, reliability, observability, testing and deployment.
 
-Prioritize API boundaries, service design, data models, async execution, retries, reliability, observability, testing, and deployment.
+Never rename ordinary CRUD as Agent engineering unless it materially participates in Agent state, execution, evaluation, or model interaction.
 
-Never rename ordinary CRUD work as Agent engineering unless it actually participates in agent execution, state management, evaluation, or model interaction.
+## Phase 9: Automatic project_profile.md generation
 
-### Phase 8: Interview preparation
+Run:
 
-For strong claims, generate:
+```bash
+python scripts/generate_project_profile.py <repo-root>
+```
 
-- a 30-second project introduction;
-- a 2-minute project introduction;
-- resume bullet candidates;
+The generator reads `.repo_to_interview/analysis.json` and writes `.repo_to_interview/project_profile.md` using the structure in `templates/project_profile.md`.
+
+Auto-populate factual sections first:
+
+- repository summary;
+- language/file statistics;
+- architecture candidates;
+- import graph hubs;
+- call graph summary;
+- representative Agent execution chains;
+- technical feature inventory;
+- ranked interview-value files with score breakdown;
+- source-code review checklist;
+- static-analysis limitations.
+
+Then the Agent should refine narrative sections after targeted source reads:
+
+- project overview;
+- role-specific positioning;
+- resume bullets;
+- 30-second / 2-minute pitch;
 - STAR stories;
-- architecture explanation;
-- technical deep-dive questions;
-- likely follow-up questions;
-- high-risk questions;
-- source files / functions to review before interview.
+- likely interview questions;
+- design rationale and tradeoffs.
 
-Prepare important claims at four depths:
+Do not invent business metrics or design rationale that cannot be found in code/docs or supplied by the user.
+
+## Phase 10: Interview preparation
+
+For the strongest mechanisms, prepare four depths:
 
 1. **What** — what the component does.
-2. **How** — how requests, data, state, and tools move through it.
-3. **Why** — why this design was chosen and what alternatives existed.
-4. **Failure** — failure modes, retries, evaluation, observability, and tradeoffs.
+2. **How** — how requests/data/state/tools flow through it.
+3. **Why** — why the design is useful and what alternatives exist; distinguish code evidence from inferred rationale.
+4. **Failure** — failure modes, retries, evaluation, observability and tradeoffs.
 
-### Phase 9: Source review prioritization
+Generate likely L1/L2/L3/high-risk follow-up questions and map each to source locations.
 
-Rank source locations by interview value, not by file size.
+## Phase 11: Confidentiality review
 
-For each recommended file/function explain:
+Before portable output, read `references/confidentiality.md`.
 
-- which claim it supports;
-- what mechanism the user should understand;
-- what interview question it helps answer;
-- whether ownership wording needs care.
+Sanitize:
 
-Prefer a short list of high-value locations over a broad repository dump.
+- proprietary project/team/customer names when required;
+- credentials/tokens/secrets;
+- internal URLs/IPs/hostnames;
+- customer identifiers/data;
+- private infrastructure topology;
+- source snippets that should not leave the environment.
 
-### Phase 10: Confidentiality review
-
-Before producing portable notes, resume content, or interview scripts, read `references/confidentiality.md` and sanitize sensitive details.
-
-When disclosure status is uncertain, replace the detail with an abstraction and mark:
-
-`[REVIEW_CONFIDENTIALITY]`
-
-Do not export non-public source code or sensitive implementation details from restricted environments.
+When uncertain, generalize and mark `[REVIEW_CONFIDENTIALITY]`.
 
 ## Outputs
 
-The default artifact is a structured `project_profile.md` based on `templates/project_profile.md`.
+Default outputs are:
 
-It should contain:
+```text
+.repo_to_interview/analysis.json
+.repo_to_interview/project_profile.md
+```
+
+The final profile should include:
 
 - project overview;
 - architecture map;
-- end-to-end workflow;
+- AST/static-analysis summary;
+- import/call graph findings;
+- representative Agent execution chains;
 - technical feature inventory;
-- verified contribution map;
-- evidence map;
+- interview-value ranking;
 - role-specific positioning;
-- resume bullet candidates;
-- 30-second and 2-minute pitches;
-- STAR stories;
+- resume candidates;
+- project pitches;
 - interview question bank;
-- source-code review checklist;
+- code review checklist;
 - confidentiality review;
-- open questions / unknowns.
+- limitations/open questions.
 
-## Supporting references
+## Supporting files
 
-Read these when relevant:
-
-- `references/ownership-model.md`
-- `references/packaging-framework.md`
-- `references/confidentiality.md`
-
-Use:
-
-- `templates/project_profile.md` for the main output;
-- `templates/review_checklist.md` before interviews;
-- `scripts/repo_inventory.py` for lightweight local repository inventory;
-- `examples/example_project_profile.md` as a synthetic example only.
+- `scripts/analyze_repo.py` — orchestrates Python AST analysis, TypeScript AST analysis, graph construction, execution-chain heuristics, and scoring.
+- `scripts/ts_ast_analyzer.cjs` — TypeScript/TSX AST collector using the TypeScript Compiler API.
+- `scripts/generate_project_profile.py` — generates the first-pass `project_profile.md`.
+- `scripts/repo_inventory.py` — lightweight inventory.
+- `references/ownership-model.md` — team-project participation and wording policy; no automatic authorship inference by default.
+- `references/packaging-framework.md` — role-oriented packaging guidance.
+- `references/confidentiality.md` — sanitization guidance.
+- `templates/project_profile.md` — output structure.
 
 ## Behavior rules
 
-- Begin analysis before asking broad project-summary questions when repository access exists.
-- Never fabricate implementation details, metrics, ownership, or design rationale.
-- Distinguish clearly among project capability, team contribution, and personal contribution.
-- Treat Git history as evidence, not infallible truth; pair it with user confirmation where needed.
-- Do not expose company-confidential identifiers or source code in portable outputs.
-- If a claim is technically attractive but poorly supported, mark it as high-risk instead of strengthening the wording.
-- If the user requests only repository analysis, do not prematurely generate resume bullets.
-- If the user requests only packaging, still verify the evidence map first.
+- Start by analyzing the repository when access exists; do not make the user manually explain code the Agent can inspect.
+- Do not run automatic authorship/ownership inference unless explicitly requested.
+- Assume the user participated in the repository, while avoiding unsupported claims of sole implementation or leadership.
+- Static analysis is incomplete by nature; explicitly mark dynamic or unresolved behavior.
+- Never fabricate implementation details, metrics, architecture, runtime paths, or design rationale.
+- Prefer a small number of high-value files and execution chains over exhaustive dumps.
+- If the user asks only for repository analysis, do not prematurely generate polished resume claims.
+- Keep confidential source code inside the approved environment; portable outputs must be sanitized.
