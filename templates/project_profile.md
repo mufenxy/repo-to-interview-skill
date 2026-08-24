@@ -8,31 +8,60 @@
 - Technology stack:
 - Target role:
 
-## 2. Architecture Map
+## 2. Static Analysis Summary
+
+- Files analyzed:
+- Languages:
+- Parse errors:
+- Import graph edges:
+- Call graph edges:
+- Representative Agent execution chains:
+- Analysis warnings:
+
+## 3. Architecture Map
 
 | Module | Responsibility | Entry points | Key files | Confidence |
 |---|---|---|---|---|
 
-## 3. End-to-End Workflow
+## 4. Import / Call Graph Findings
 
-Describe one representative input-to-output path.
+### Import hubs
 
-## 4. Technical Feature Inventory
+| File | Incoming imports | Outgoing imports | Architectural role |
+|---|---:|---:|---|
+
+### Important call paths
+
+| Source | Target | Confidence | Why it matters |
+|---|---|---|---|
+
+## 5. Representative Agent Execution Chains
+
+### Chain 1
+
+```text
+entry
+→ service
+→ agent
+→ tool/model
+→ state/evaluation/tracing
+```
+
+- Confidence:
+- Evidence:
+- Dynamic / unresolved jumps:
+
+## 6. Technical Feature Inventory
 
 | Feature | Mechanism | Evidence | Role relevance | Confidence |
 |---|---|---|---|---|
 
-## 5. Verified Contribution Map
+## 7. Interview-Value Ranking
 
-| Component | Ownership | Evidence | User confirmation | Notes |
-|---|---|---|---|---|
+| File | Score | Agent/LLM | Execution | Graph | Architecture | Depth | Why review |
+|---|---:|---:|---:|---:|---:|---:|---|
 
-## 6. Evidence Map
-
-| Candidate claim | Ownership | Evidence | Mechanism | Interview value | Interview risk | Confidentiality risk | Usage |
-|---|---|---|---|---|---|---|---|
-
-## 7. Role-Specific Positioning
+## 8. Role-Specific Positioning
 
 ### Agent Engineer
 
@@ -42,19 +71,17 @@ Describe one representative input-to-output path.
 
 ### Backend Engineer
 
-## 8. Resume Bullet Candidates
+## 9. Resume Bullet Candidates
 
 ### Strong candidates
 
 ### Conditional candidates
 
-### Do not use
+## 10. 30-Second Project Pitch
 
-## 9. 30-Second Project Pitch
+## 11. 2-Minute Project Pitch
 
-## 10. 2-Minute Project Pitch
-
-## 11. STAR Stories
+## 12. STAR Stories
 
 ### Story 1
 
@@ -64,21 +91,27 @@ Describe one representative input-to-output path.
 - Result:
 - Evidence:
 
-## 12. Interview Question Bank
+## 13. Interview Question Bank
 
 | Level | Question | Expected answer points | Evidence to review |
 |---|---|---|---|
 
-## 13. Code Review Checklist
+## 14. Code Review Checklist
 
-| Priority | File / function | Why review it | Claim supported |
-|---|---|---|---|
+| Priority | File / function | Interview-value score | Why review it | Question supported |
+|---|---|---:|---|---|
 
-## 14. Confidentiality Review
+## 15. Confidentiality Review
 
 | Detail | Risk | Sanitized wording | Needs manual review |
 |---|---|---|---|
 
-## 15. Open Questions / Unknowns
+## 16. Static-Analysis Limitations
+
+- Dynamic dispatch / dependency injection / runtime registries may not resolve statically.
+- Low-confidence graph edges must be verified from source.
+- Interview-value score is a review-priority heuristic, not a code-quality metric.
+
+## 17. Open Questions / Manual Verification
 
 -
