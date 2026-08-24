@@ -1,88 +1,74 @@
-# Ownership Model
+# Participation and Wording Model
 
-## Goal
+## Default assumption
 
-Keep project presentation accurate while still allowing a user to explain a large team system with appropriate technical depth.
+Treat the repository as a team project in which the user participated in development.
 
-## Labels
+Do **not** automatically infer fine-grained authorship from Git history, file ownership, commit counts, or blame data unless the user explicitly asks for attribution analysis.
 
-### OWNED
+The purpose of this skill is to identify technically meaningful mechanisms and prepare the user to explain them accurately, not to reconstruct organizational ownership boundaries.
 
-Use when the user independently implemented or designed the substantial part of the component or mechanism.
+## Safe default framing
 
-Safe wording may include:
+When discussing the project as a whole, prefer wording such as:
+
+- the project implements ...
+- the system uses ...
+- our system / our project ...
+- I participated in the development of ...
+- I worked on ...
+- I contributed to ...
+
+When the user explicitly states stronger responsibility for a concrete area, stronger verbs may be used:
 
 - designed
 - implemented
 - built
-- introduced
+- drove
 - led the implementation of
 
-### MAJOR_CONTRIBUTOR
+Do not invent sole ownership or leadership.
 
-Use when the user made a large contribution but the work was collaborative.
+## What repository evidence proves
 
-Prefer:
+Repository evidence can support:
 
-- drove the implementation of
-- implemented major parts of
-- co-designed
-- led / contributed substantially to
+- that a mechanism exists;
+- how the mechanism works;
+- where it is implemented;
+- which modules interact;
+- what runtime path static analysis suggests;
+- which source files are worth studying.
 
-Avoid implying sole authorship.
+Repository presence alone does **not** prove:
 
-### CONTRIBUTED
+- sole authorship;
+- leadership;
+- who made the architectural decision;
+- who owns the production outcome.
 
-Use for bounded meaningful work.
+The skill therefore avoids automatic per-module ownership labels by default.
 
-Prefer:
+## Interview defensibility
 
-- contributed to
-- implemented the X portion of
-- extended
-- integrated
-- added support for
+For any strong project statement, the user should be able to answer:
 
-### UNDERSTAND_ONLY
+1. What does this component do?
+2. How does the request/data/state flow through it?
+3. Why is this design useful or what tradeoff does it address?
+4. What can fail and how is that observed or handled?
+5. Which source files/functions support the explanation?
 
-The user can discuss the component as project context but should not claim implementation ownership.
+If the Agent cannot establish the mechanism from code or docs, downgrade confidence rather than strengthening the wording.
 
-Prefer:
+## Optional attribution mode
 
-- the system uses
-- the architecture includes
-- our project adopted
+Only when explicitly requested may the Agent inspect:
 
-### UNKNOWN
+- git log;
+- git blame;
+- pull requests;
+- issues/task records;
+- user-provided contribution notes.
 
-Evidence is incomplete. Ask for verification before converting the item into a first-person claim.
-
-### DO_NOT_CLAIM
-
-Use when attribution would be misleading, evidence conflicts, or the content is unsafe to disclose.
-
-## Evidence priority
-
-Strongest to weakest:
-
-1. user confirmation tied to a concrete module / task;
-2. attributable PR with meaningful diff;
-3. attributable commits with meaningful changes;
-4. issue / task record linking user and component;
-5. surrounding repository structure only.
-
-Level 5 is not authorship evidence.
-
-## Interview risk
-
-A claim's risk increases when:
-
-- ownership is weak;
-- mechanism is not understood;
-- code path is complex;
-- user cannot explain design alternatives;
-- metrics are system-level but wording sounds personal;
-- the component was built by another team;
-- confidentiality constraints prevent meaningful explanation.
-
-High-value + high-risk claims should be studied before use, not automatically included.
+Even then, treat Git metadata as evidence rather than infallible ground truth.
